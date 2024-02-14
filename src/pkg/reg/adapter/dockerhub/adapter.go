@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goharbor/harbor/src/common/utils"
 	"github.com/goharbor/harbor/src/lib/log"
@@ -442,6 +444,22 @@ func (a *adapter) getTags(namespace, repo string, page, pageSize int) (*TagsResp
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	// Wait until 'ratelimit-reset' time + 1 second passes when
+	// limit depletion eminent (less than 8 requests left).
+	// https://docs.docker.com/docker-hub/api/latest/#tag/rate-limiting
+	remaining_reqs, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-remaining"), 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	if remaining_reqs < 8 {
+		reset_timestamp, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-reset"), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		duration := time.Duration((reset_timestamp - time.Now().Unix() + 1) * 1000 * 1000 * 1000)
+		time.Sleep(duration)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
