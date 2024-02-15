@@ -126,8 +126,8 @@ func getAdapterInfo() *model.AdapterPattern {
 	return info
 }
 
-// Wait until 'ratelimit-reset' time + 1 second passes when
-// limit depletion eminent (less than 8 requests left).
+// Wait until 'ratelimit-reset' time + 1 second passes
+// when limit depletion eminent (less than 8 requests left).
 // https://docs.docker.com/docker-hub/api/latest/#tag/rate-limiting
 func processRateLimit(resp *http.Response) {
 	remaining_reqs, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-remaining"), 10, 64)
@@ -142,7 +142,7 @@ func processRateLimit(resp *http.Response) {
 		duration := reset_timestamp - time.Now().Unix() + 1
 		log.Infof("Ratelimit is near exhaustion, sleeping for %d seconds", duration)
 		time.Sleep(time.Duration(duration * 1000 * 1000 * 1000))
-		log.Info("Resuming opration")
+		log.Info("Sleep finished, resuming operation")
 	}
 }
 
