@@ -139,8 +139,10 @@ func processRateLimit(resp *http.Response) {
 		if err != nil {
 			return
 		}
-		duration := time.Duration((reset_timestamp - time.Now().Unix() + 1) * 1000 * 1000 * 1000)
-		time.Sleep(duration)
+		duration := reset_timestamp - time.Now().Unix() + 1
+		log.Infof("Ratelimit is near exhaustion, sleeping for %d seconds", duration)
+		time.Sleep(time.Duration(duration * 1000 * 1000 * 1000))
+		log.Info("Resuming opration")
 	}
 }
 
