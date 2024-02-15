@@ -126,6 +126,24 @@ func getAdapterInfo() *model.AdapterPattern {
 	return info
 }
 
+// Wait until 'ratelimit-reset' time + 1 second passes when
+// limit depletion eminent (less than 8 requests left).
+// https://docs.docker.com/docker-hub/api/latest/#tag/rate-limiting
+func processRateLimit(resp *http.Response) {
+	remaining_reqs, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-remaining"), 10, 64)
+	if err != nil {
+		return
+	}
+	if remaining_reqs < 8 {
+		reset_timestamp, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-reset"), 10, 64)
+		if err != nil {
+			return
+		}
+		duration := time.Duration((reset_timestamp - time.Now().Unix() + 1) * 1000 * 1000 * 1000)
+		time.Sleep(duration)
+	}
+}
+
 // PrepareForPush does the prepare work that needed for pushing/uploading the resource
 // eg: create the namespace or repository
 func (a *adapter) PrepareForPush(resources []*model.Resource) error {
@@ -165,6 +183,7 @@ func (a *adapter) listNamespaces() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -213,6 +232,7 @@ func (a *adapter) CreateNamespace(namespace *model.Namespace) error {
 	if err != nil {
 		return err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -234,6 +254,7 @@ func (a *adapter) getNamespace(namespace string) (*model.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -395,6 +416,7 @@ func (a *adapter) DeleteManifest(repository, reference string) error {
 	if err != nil {
 		return err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -416,6 +438,7 @@ func (a *adapter) getRepos(namespace, name string, page, pageSize int) (*ReposRe
 	if err != nil {
 		return nil, err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -443,23 +466,8 @@ func (a *adapter) getTags(namespace, repo string, page, pageSize int) (*TagsResp
 	if err != nil {
 		return nil, err
 	}
+	processRateLimit(resp)
 	defer resp.Body.Close()
-
-	// Wait until 'ratelimit-reset' time + 1 second passes when
-	// limit depletion eminent (less than 8 requests left).
-	// https://docs.docker.com/docker-hub/api/latest/#tag/rate-limiting
-	remaining_reqs, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-remaining"), 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	if remaining_reqs < 8 {
-		reset_timestamp, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-reset"), 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		duration := time.Duration((reset_timestamp - time.Now().Unix() + 1) * 1000 * 1000 * 1000)
-		time.Sleep(duration)
-	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
