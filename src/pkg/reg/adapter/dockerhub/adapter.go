@@ -152,8 +152,8 @@ func (a *adapter) limitAwareDo(method string, path string, body io.Reader) (*htt
 					time.Sleep(dur)
 					log.Info("Sleep finished, resuming operation")
 				}
-				return clientResp, clientErr
 			}
+			return clientResp, clientErr
 		}
 		var dur = time.Duration(0)
 		seconds, err := strconv.ParseInt(clientResp.Header.Get("retry-after"), 10, 64)
