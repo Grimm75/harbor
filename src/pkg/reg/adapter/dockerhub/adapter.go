@@ -127,51 +127,27 @@ func getAdapterInfo() *model.AdapterPattern {
 }
 
 // Rate-limit aware wrapper function for client.Do()
-// - Avoids being hit by limit by pausing requests when less than 8 requests remaining.
-// - Pauses for given time when limit is hit.
-// - Allows 2 more attempts before giving up.
-// Reason: Observed (02/2024) penalty for hitting the limit is 120s, normal reset is 60s,
-// so it is better to not hit the wall.
+// avoids being hit by limit by pausing requests when less than 'lowMark' requests remaining.
 func (a *adapter) limitAwareDo(method string, path string, body io.Reader) (*http.Response, error) {
-	var attemptsLeft = 3
-	for attemptsLeft > 0 {
-		clientResp, clientErr := a.client.Do(method, path, body)
-		if clientErr != nil {
-			return clientResp, clientErr
-		}
-		if clientResp.StatusCode != http.StatusTooManyRequests {
-			reqsLeft, err := strconv.ParseInt(clientResp.Header.Get("x-ratelimit-remaining"), 10, 64)
-			if err != nil {
-				return clientResp, clientErr
-			}
-			if reqsLeft < 8 {
-				resetTSC, err := strconv.ParseInt(clientResp.Header.Get("x-ratelimit-reset"), 10, 64)
-				if err == nil {
-					dur := time.Until(time.Unix(resetTSC, 0))
-					log.Infof("Rate-limit exhaustion eminent, sleeping for %.1f seconds", dur.Seconds())
-					time.Sleep(dur)
-					log.Info("Sleep finished, resuming operation")
-				}
-			}
-			return clientResp, clientErr
-		}
-		var dur = time.Duration(0)
-		seconds, err := strconv.ParseInt(clientResp.Header.Get("retry-after"), 10, 64)
-		if err != nil {
-			expireTime, err := http.ParseTime(clientResp.Header.Get("retry-after"))
-			if err != nil {
-				return nil, errors.New("blocked by dockerhub rate-limit and missing retry-after header")
-			}
-			dur = time.Until(expireTime)
-		} else {
-			dur = time.Duration(seconds) * time.Second
-		}
-		log.Infof("Rate-limit exhausted, sleeping for %.1f seconds", dur.Seconds())
-		time.Sleep(dur)
-		log.Info("Sleep finished, resuming operation")
-		attemptsLeft--
+	const lowMark = 8
+	clientResp, clientErr := a.client.Do(method, path, body)
+	if clientErr != nil {
+		return clientResp, clientErr
 	}
-	return nil, errors.New("unable to get past dockerhub rate-limit")
+	reqsLeft, err := strconv.ParseInt(clientResp.Header.Get("x-ratelimit-remaining"), 10, 64)
+	if err != nil {
+		return clientResp, clientErr
+	}
+	if reqsLeft < lowMark {
+		resetTSC, err := strconv.ParseInt(clientResp.Header.Get("x-ratelimit-reset"), 10, 64)
+		if err == nil {
+			dur := time.Until(time.Unix(resetTSC, 0))
+			log.Infof("Rate-limit exhaustion eminent, sleeping for %.1f seconds", dur.Seconds())
+			time.Sleep(dur)
+			log.Info("Sleep finished, resuming operation")
+		}
+	}
+	return clientResp, clientErr
 }
 
 // PrepareForPush does the prepare work that needed for pushing/uploading the resource
